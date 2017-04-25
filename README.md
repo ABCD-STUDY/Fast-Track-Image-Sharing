@@ -5,7 +5,7 @@ ABCD is sharing raw DICOM images in a BIDS like file directory format. This scri
 ## Input Data
 
 Data exists on the local file system packaged as TGZ encoded directory trees that contain all DICOM files of a single series. Togther with the DICOM files the TGZ also contains a json file (extension .json) that describes the data. Here an example:
-<code>
+```json
 {
     "AccessionNumber": "",
     "AcquisitionLength": "TA 06:00",
@@ -50,20 +50,20 @@ Data exists on the local file system packaged as TGZ encoded directory trees tha
     "siemensDiffusionInformation": [],
     "siemensUUID": "X-X-X"
 }
-</code>
+```
 
 ## Output
 
 The script will create an output TGZ file that contains a directory structure that follows BIDS closely.
 
-<code>
+```
 sub-NDARINVXXXXXXXX/
   ses-baselineYear1Arm1/
     func/
       ABCD-SST-FMRI_run-20000000/
       ABCD-SST-fMRI_run-20000000-EventRelatedInformation.txt
       ABCD-SST-fMRI_run-20000000.json
-</code>
+```
 
 ## Workflow
 
