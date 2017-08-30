@@ -2,5 +2,13 @@
     "REDCAP": [ {
 	"token": "ABCD1234",
 	"server_url": "https://server-redcap.yoursite.edu/redcap/api/"
-    } ]    
+    } ],
+    "AWS": [ {
+	"username": "xxxx",
+	"password": "xxxx"
+    } ],
+    "minDAR": [ {
+	"username": "xxxx",
+	"password": "xxxx"
+    } ]
 }
