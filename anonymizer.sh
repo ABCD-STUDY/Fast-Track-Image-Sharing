@@ -20,6 +20,8 @@ from dicom.filebase import DicomBytesIO
 from multiprocessing import Pool, TimeoutError
 from io import StringIO
 import sqlite3
+import pandas as pd
+import hashlib
 
 """
   Do the main work here
@@ -51,7 +53,7 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
 
                     try:
                         # replace information from the json file
-                        info['PatientName'] = anonInfo['pGUID']
+                        info['PatientName'] =  ['pGUID']
                         info['PatientID'] = anonInfo['pGUID']
                         info['StudyDescription'] = "Adolescent Brain Cognitive Development Study"
                         info['SeriesDescription'] = ', '.join(anonInfo['ClassifyType'])
@@ -66,13 +68,35 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
                         info['PatientsAge'] = ("%.1f" % ((sday-bday).days/365.25))   # PatientAge
                         anonInfo['PatientsAge'] = info['PatientsAge']
                         info['PatientsSex'] = anonInfo['gender']
-                        anonInfo['RepetitionTime'] = info['RepetitionTime']
-                        anonInfo['EchoTime'] = info['EchoTime']
+                        anonInfo['RepetitionTime'] = '0'
+                        try: 
+                                anonInfo['RepetitionTime'] = info['RepetitionTime']
+                        except:
+                                pass
+                        anonInfo['EchoTime'] = '0'
+                        try:
+                                anonInfo['EchoTime'] = info['EchoTime']
+                        except:
+                                pass
+                        # calculate a series time without the fractional seconds
+                        seriestime = anonInfo['SeriesTime']
+                        if "." in seriestime:
+                                seriestime = seriestime.split(".")[0]
+                        bidstype = bidsFolderByClassifyType( anonInfo['ClassifyType'] )
 
-
-                        if 'ABCD-SST-fMRI' in anonInfo['ClassifyType']:
-                                # lookup the EPrime file for this pGUID, event and SeriesType == 'fMRI_SST_task'
-                                print("lookup EPrime for SST")
+                        if 'ABCD-SST-fMRI' in anonInfo['ClassifyType'] or 'ABCD-MID-fMRI' in anonInfo['ClassifyType'] or 'ABCD-nBack-fMRI' in anonInfo['ClassifyType']: 
+                                # lookup the EPrime file for SeriesInstanceUID    
+                                eventEdatFileName = "sub-%s/ses-%s/%s/%s_run-%s%s-EventRelatedInformation.%s" % (anonInfo['pGUID_BIDS'],
+                                                                               anonInfo['event_BIDS'],
+                                                                               bidstype,
+                                                                               anonInfo['ABCDType'],
+                                                                               anonInfo['SeriesDate'],
+                                                                               seriestime,
+                                                                               eprime_flags[1])
+                                if not os.path.isfile(eprime_flags[0]):
+                                        print("Error: eprime file not found, path exists in spreadsheet but file is not there\n")
+                                else:
+                                        tarout.add(eprime_flags[0],eventEdatFileName)
 
                         # if we have type ABCD-DTI we should add bval and bvec files now
                         if 'ABCD-DTI' in anonInfo['ClassifyType']:
@@ -96,16 +120,18 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
 -0.000000 -0.000000 -0.655513 -0.272029 0.957094 0.118828 0.956911 0.327157 -0.394373 -0.190835 0.905992 -0.191189 0.565902 -0.558312 -0.005951 0.648472 -0.325327 0.435523 -0.059997 0.326103 0.289867 -0.637838 0.008708 0.098754 0.022966 -0.162769 -0.022751 0.094978 -0.214940 -0.596246 0.741044 -0.595893 0.848338 0.943300 -0.000000 0.215886 0.416952 0.060414 0.417023 0.814552 -0.266120 -0.399771 -0.442400 -0.735112 0.565939 -0.716992 0.733233 -0.331180 -0.000000 -0.466156 -0.480470 0.581260 -0.961493 0.581147 -0.920818 0.393314 -0.928715 0.851797 0.928998 -0.571365 -0.535979 0.788205 0.443093 -0.861221 0.144001 0.893658 -0.860948 0.796077 -0.000000 0.398642 0.525984 0.806489 0.691512 -0.525146 0.974071 -0.886396 0.052210 0.697290 -0.034320 0.626752 -0.034278 0.994016 0.739273 -0.084637 0.702679 -0.084749 -0.504541 -0.371331 -0.000000 0.050827 -0.630628 0.170539 0.312558 -0.630249 -0.886549 0.153086 0.605923 -0.215958 -0.491445 0.210576 0.490836 0.787291 -0.000000
 0.000000 0.000000 0.666084 0.230647 -0.221399 0.986722 -0.222244 0.376026 -0.912560 0.787614 -0.239087 0.787175 -0.677026 -0.496326 -0.997949 -0.453070 -0.426396 0.749627 -0.225495 0.423405 -0.730081 0.407998 0.835678 -0.764177 -0.735128 -0.364413 0.733384 -0.562651 -0.659282 -0.760011 -0.670272 -0.760490 0.490046 0.132552 0.000000 0.644682 0.841500 0.972731 0.841472 -0.147297 0.903742 -0.394888 0.468254 0.611683 -0.166191 0.379362 -0.613938 -0.032168 0.000000 0.868579 -0.383080 -0.728644 0.107132 -0.728880 0.389973 0.084088 -0.109398 -0.411284 0.106625 0.185135 0.827441 -0.480613 0.873063 -0.392779 0.890446 0.170968 -0.393388 0.323145 0.000000 -0.753044 0.378560 -0.028144 0.131548 -0.382067 0.211578 -0.451719 0.070955 0.715958 0.126633 0.724607 0.126198 -0.081473 0.427954 0.994814 0.617504 0.994799 -0.638496 0.517838 0.000000 -0.511541 0.171962 -0.930200 0.850576 0.171567 -0.436891 0.500012 0.172985 0.273234 0.272912 -0.977488 -0.276964 -0.552180 0.000000"""
 
-                                bvalName = "sub-%s/ses-%s/%s_run-%s%s.bval" % (anonInfo['pGUID_BIDS'],
+                                bvalName = "sub-%s/ses-%s/%s/%s_run-%s%s.bval" % (anonInfo['pGUID_BIDS'],
                                                                                anonInfo['event_BIDS'],
+                                                                               bidstype,
                                                                                anonInfo['ABCDType'],
                                                                                anonInfo['SeriesDate'],
-                                                                               anonInfo['SeriesTime'])
-                                bvecName = "sub-%s/ses-%s/%s_run-%s%s.bvec" % (anonInfo['pGUID_BIDS'],
+                                                                               seriestime)
+                                bvecName = "sub-%s/ses-%s/%s/%s_run-%s%s.bvec" % (anonInfo['pGUID_BIDS'],
                                                                                anonInfo['event_BIDS'],
+                                                                               bidstype,
                                                                                anonInfo['ABCDType'],
                                                                                anonInfo['SeriesDate'],
-                                                                               anonInfo['SeriesTime'])
+                                                                               seriestime)
                                 if 'GE' in anonInfo['ClassifyType']:
                                         tinfo = tarfile.TarInfo(name=bvalName)
                                         tinfo.size = len(GEbvals)
@@ -152,9 +178,12 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
                                 subjectName = os.path.basename(tarout.name)
                                 subjectName, fext = os.path.splitext(subjectName)
 
-                                imageName = "sub-%s/ses-%s/%s_run-%s%s.json" % (anonInfo['pGUID_BIDS'], 
-                                                                                   anonInfo['event_BIDS'], anonInfo['ABCDType'], anonInfo['SeriesDate'], 
-                                                                                   anonInfo['SeriesTime'])
+                                imageName = "sub-%s/ses-%s/%s/%s_run-%s%s.json" % (anonInfo['pGUID_BIDS'], 
+                                                                                   anonInfo['event_BIDS'],
+                                                                                   bidstype, 
+                                                                                   anonInfo['ABCDType'], 
+                                                                                   anonInfo['SeriesDate'], 
+                                                                                   seriestime)
                                 tinfo = tarfile.TarInfo(name=imageName)
                                 tarout.add(temp.name, imageName)
                     except:
@@ -186,7 +215,10 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
                                                 num = num + 1
                                         except KeyError:
                                                 #print "Erro: Key %s:%s does not exist" % (tagEntry['group'], tagEntry['element'])
-                                                log.error("Error: Key %s:%s does not exist (meta or data)" % (tagEntry['group'], tagEntry['element']))
+                                                #try:
+                                                #        log.error("Error: Key %s:%s does not exist (meta or data)" % (tagEntry['group'], tagEntry['element']))
+                                                #except FileNotFoundError:
+                                                #        pass
                                                 pass
                                         pass
                 if 'name' in tagEntry:
@@ -201,13 +233,23 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
                                         num = num + 1
                                 except KeyError:
                                       print("Error: got KeyError trying to set the value of %s" % tagEntry['name'])
-                                      log.error("Error: got KeyError trying to set the value of %s" % tagEntry['name'])
+                                      #log.error("Error: got KeyError trying to set the value of %s" % tagEntry['name'])
                                       pass
                                 pass
+        
         dataset[int("0x10",0),int("0x10",0)].value = anonInfo['pGUID']
         dataset[int("0x10",0),int("0x20",0)].value = anonInfo['pGUID']
         dataset[int("0x10",0),int("0x40",0)].value = anonInfo['gender']
-        # return this value from dicom if not there already
+        
+        
+        #hash for DeviceSerialNumber 
+        encoded = dataset[int("0x18",0),int("0x1000",0)].value.encode('utf-8')
+        h = "anon%s" % hashlib.sha224(encoded).hexdigest()
+        dataset[int("0x18",0),int("0x1000",0)].value = h[0:8]
+        print("encoded: %s" % encoded)
+        print("h: %s" % h[0:8])
+
+        #return this value from dicom if not there already
         if not 'SoftwareVersion' in anonInfo:
             anonInfo['SoftwareVersion'] = ''
             try:
@@ -279,26 +321,34 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
                 pass
         dataset[int("0x08",0),int("0x103e",0)].value = ''.join([', '.join(sorted(anonInfo['ClassifyType'])), ' (', anonInfo['event'], ')'])
         
+
         # find out if the file is a symbolic link, overwrite the origin instead
         #if os.path.islink(df):
         #        print("File is symlink, replace origin instead")
         #        log.error("File is symlink %s" % df)
-
         # and overwrite the file again
+
         try:
                 #print("Save the file again in: %s" % df)
                 if mode == "dir":
                     log.error("Save the file again in: %s" % df)
                     dataset.save_as(df)
                 else:
+                    # calculate a series time without the fractional seconds
+                    seriestime = anonInfo['SeriesTime']
+                    if "." in seriestime:
+                            seriestime = seriestime.split(".")[0]
+
+                    bidstype = bidsFolderByClassifyType( anonInfo['ClassifyType'] )
+
                     # assumption is that we need to save into a tgz now
                     # this is potentially a critical section, we should only try to write to the tar file if no one else does
                     with tempfile.NamedTemporaryFile() as temp:
                         dataset.save_as(temp.name)
                         subjectName = os.path.basename(tarout.name)
                         subjectName, fext = os.path.splitext(subjectName)
-                        imageName = "sub-%s/ses-%s/%s_run-%s%s/sub-%s_ses-%s_dicom%06d.dcm" % (anonInfo['pGUID_BIDS'], anonInfo['event_BIDS'], 
-                                                                                        anonInfo['ABCDType'], anonInfo['SeriesDate'], anonInfo['SeriesTime'], anonInfo['pGUID_BIDS'], 
+                        imageName = "sub-%s/ses-%s/%s/%s_run-%s%s/sub-%s_ses-%s_dicom%06d.dcm" % (anonInfo['pGUID_BIDS'], anonInfo['event_BIDS'], bidstype,
+                                                                                        anonInfo['ABCDType'], anonInfo['SeriesDate'], seriestime, anonInfo['pGUID_BIDS'], 
                                                                                         anonInfo['event_BIDS'], dataset[int("0x20",0),int("0x13",0)].value)
                         tinfo = tarfile.TarInfo(name=imageName)
                         tarout.add(temp.name, imageName)
@@ -349,7 +399,19 @@ def addMetaData( metadatadir, metadata ):
     table_name = 'image03'
 
     # Connecting to the database file
-    conn = sqlite3.connect(sqlite_file)
+    conn = 0
+    try:
+        conn = sqlite3.connect(sqlite_file)
+    except sqlite3.Error:
+        print("Warning: Could not connect to database file %s... wait and try again." % sqlite_file)
+        time.sleep(1)
+        try:
+                conn = sqlite3.connect(sqlite_file)
+        except sqlite3.Error:
+                print("Error: Could not connect to database file %s" % sqlite_file)
+                return
+        pass
+                
     c = conn.cursor()
 
     # A) Inserts an ID with a specific value in a second column
@@ -378,16 +440,77 @@ def exportMetaData( filename ):
 
     c.execute('SELECT * FROM {tn}'.format(tn="image03"))
     header = list(map(lambda x: x[0], c.description))
+    #del header[0]
     all_rows = c.fetchall()
     #print(all_rows)
     with open(filename, "w") as f:
         writer = csv.writer(f)
+        writer.writerow(['image','3'])
         writer.writerow(header)
         writer.writerows(all_rows)
     print('Export to %s done.' % filename)
 
     conn.commit()
     conn.close()
+
+# return a value from REDCap
+def getValueFromREDCap( pGUID, event, measure ):
+    if not os.path.exists('config.json'):
+            print("Error: Could not find local config.json, no information on how to connect to REDCap")
+            sys.exit()
+    token = ""
+    redcap_url = ""
+    with open('config.json','r') as f:
+            try:
+                    config = json.load(f)
+            except ValueError:
+                    print("Error: could not read config.json")
+                    sys.exit()
+            try:
+                    token = config["REDCAP"][0]['token']
+                    redcap_url = config["REDCAP"][0]['server_url']
+            except KeyError:
+                    print("Error: expected keys ['REDCAP'][0]['token'] and ['REDCAP'][0]['server_url']")
+                    sys.exit()
+    
+    buf = io.BytesIO() # StringIO()
+    # variables we need from REDCap
+    data = {
+        'token': token,
+        'content': 'record',
+        'format': 'json',
+        'type': 'flat',
+        'records[0]': pGUID,
+        'fields[0]': measure,
+        'fields[1]': 'id_redcap',
+        'fields[1]': 'enroll_total',
+        'events[0]': event,
+        'rawOrLabel': 'raw',
+        'rawOrLabelHeaders': 'raw',
+        'exportCheckboxLabel': 'false',
+        'exportSurveyFields': 'false',
+        'exportDataAccessGroups': 'true',
+        'returnFormat': 'json'
+    }
+    ch = pycurl.Curl()
+    ch.setopt(ch.URL, redcap_url)
+    ch.setopt(ch.HTTPPOST, list(data.items()))
+    ch.setopt(ch.WRITEFUNCTION, buf.write)
+    ch.perform()
+    ch.close()
+    vv = StringIO(buf.getvalue().decode('UTF-8'))
+    v = json.load( vv ) # buf.getvalue() )
+    buf.close()
+    if isinstance(v,list) and (len(v) > 0) and ('enroll_total___1' in v[0]):
+        if v[0]['enroll_total___1'] != "1":
+                print("Warning: participant %s is not enrolled" % pGUID)
+                return -1
+    else:
+        print("Warning: Could not read enroll_total from REDCap, don't know if this participant is enrolled")
+        return -1
+    if isinstance(v,list) and (len(v) > 0) and (measure in v[0]):
+        return v[0][measure]
+    return -1
 
 # stub, not used for now
 def checkHandedness( demo ):
@@ -398,7 +521,7 @@ def checkHandedness( demo ):
     buf = io.BytesIO() # StringIO()
     # variables we need from REDCap
     data = {
-        'token': '<REDCAP TOKEN>',
+        'token': '',
         'content': 'record',
         'format': 'json',
         'type': 'flat',
@@ -458,11 +581,46 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    ss = '\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix)
+    print(ss.encode("utf-8"), end = '\r')
     # Print New Line on Complete
     if iteration == total: 
         print()
 
+def lookupEdat2(si_uid, eprime):
+        path = ''
+        eprime_ext = ''
+        for i in range(0,eprime.shape[0]):
+          if eprime['SeriesInstanceUID'][i] == si_uid:
+            path = eprime['eprime_file_name'][i]	
+            break
+        if pd.isnull(path):
+           return -1
+        else: 
+          if path.endswith('.csv'):
+            print('csv e-prime file found')
+            eprime_ext = 'csv'
+          elif path.endswith('.txt'):
+            print('txt e-prime file found')
+            eprime_ext = 'txt'
+          else:
+            print('Error: file extension for E-Prime neither csv nor txt')
+            return -1
+
+        if not os.path.isfile(path):
+            print("Error: E-Prime file could not be found - its in the spreadsheet but not on disk")
+            return -1
+        return (path, eprime_ext)
+
+def bidsFolderByClassifyType( type ):
+        ret = 'fmap'
+        if 'ABCD-DTI' in type:
+            ret = 'dwi'                  
+        if ('ABCD-SST-fMRI' in type) or ('ABCD-MID-fMRI' in type) or ('ABCD-nBack-fMRI' in type) or ('ABCD-rsfMRI' in type): 
+            ret = 'func'               
+        if ('ABCD-T1' in type) or ('ABCD-T1-NORM' in type) or ('ABCD-T2' in type) or ('ABCD-T2-NORM' in type):
+            ret = 'anat'
+        return ret
 
 #  Hauke,    May 2016               
 if __name__ == "__main__":
@@ -479,10 +637,11 @@ if __name__ == "__main__":
         outputdir = '.'
         metadatadir = '.'
         exportfile = '.'
+        eprimefile = ''
         try:
-                opts,args = getopt.getopt(sys.argv[1:],"hi:d:o:m:e:",["input=","demographics=","outputdir=","metadatadir=","export="])
+                opts,args = getopt.getopt(sys.argv[1:],"hi:d:o:m:p:e",["input=","demographics=","outputdir=","metadatadir=","eprime=","export="])
         except getopt.GetoptError:
-                print('anonymizer.sh -i <input tgz> -d <demographics information in json format> -o <output directory> -m <meta data directory>')
+                print('anonymizer.sh -i <input tgz> -d <demographics information in json format> -o <output directory> -m <meta data directory> -p <eprime spreadsheet>')
                 sys.exit(2)
         for opt, arg in opts:
                 if opt == '-h':
@@ -492,20 +651,23 @@ if __name__ == "__main__":
                         inputfile = arg
                 elif opt in ("-d", "--demographics"):
                         demographics = arg
+                        #print(demographics)
                 elif opt in ("-o", "--outputdir"):
                         outputdir = arg
-                elif opt in ("-c", "--metadatadir"):
+                elif opt in ("-m", "--metadatadir"):
                         metadatadir = arg
                 elif opt in ("-e", "--export"):
                         exportfile = arg
                         exportMetaData( exportfile )
                         os.sys.exit(0)
+                elif opt in ("-p", "--eprime"):
+                        eprimefile = arg  
 
         outputdir = os.path.abspath(outputdir)
 
         if demographics == '':
                 print('Error: we require a demographics json file with gender, pGUID, dob')
-                print('anonymizer.sh -i <input tgz> -d <demographics information in json format> -o <output directory> -m <meta data directory>')
+                print('anonymizer.sh -i <input tgz> -d <demographics information in json format> -o <output directory> -m <meta data directory> -p <eprime spreadsheet>')
                 log.error('Error: we require a demographics file with gender, pGUID, dob')
                 sys.exit()
 
@@ -520,8 +682,9 @@ if __name__ == "__main__":
                         sys.exit(0)
         if demo == []:
                 print('Error: could not read demographics as json')
-                sys.log('Error: could not read demographics as json')
+                log.error('Error: could not read demographics as json')
                 sys.exit(0)
+        
         # handedness should be in there, if not we need to compute it once
         # demo = checkHandedness( demo )
 
@@ -530,7 +693,7 @@ if __name__ == "__main__":
                 os.mkdir(outputdir)
                 if not os.path.exists(outputdir):
                         print("Error: could not create output directory %s" % outputdir)
-                        sys.log("Error: could not create output directory %s" % outputdir)
+                        log.error("Error: could not create output directory %s" % outputdir)
                         sys.exit(0)
 
         if not os.path.exists(metadatadir):
@@ -538,11 +701,33 @@ if __name__ == "__main__":
                 os.mkdir(metadatadir)
                 if not os.path.exists(metadatadir):
                         print("Error: could not create metadata directory %s" % metadatadir)
-                        sys.log("Error: could not create metadata directory %s" % metadatadir)
+                        log.error("Error: could not create metadata directory %s" % metadatadir)
                         sys.exit(0)
+        
+        if eprimefile == '':
+                print('Error: we require an e-prime file')
+                print('anonymizer.sh -i <input tgz> -d <demographics information in json format> -o <output directory> -m <meta data directory> -p <eprime spreadsheet>')
+                log.error('Error: we require an e-prime file')
+                sys.exit()
+
+        eprime = []
+        if os.path.exists(eprimefile):
+                with open(eprimefile,'r') as f:
+                     try:
+                        eprime = pd.read_csv(f)
+                     except ValueError:
+                        print("Error: could not read eprime data from file")
+                        log.error("Error: could not read eprime data from file")
+                        sys.exit(0)
+        
+        if eprime.shape[0] == 0:
+                print('Error: could not read e-prime file as csv')
+                log.error('Error: could not read e-prime file as csv')
+                sys.exit(0)
+
 
         if 1:
-                # general purpose disclaimer
+                # general lookupEdat2purpose disclaimer
                 if not os.path.exists(inputfile):
                     print("Error: input argument is neither directory nor file")
                     log.error("Error: input argument is neither directory nor file")
@@ -557,6 +742,7 @@ if __name__ == "__main__":
                 pattern2 = re.compile('(ABCD[0-9A-Za-z]+)_(.*(?=_Session))')
                 pattern3 = re.compile('(PhantomTravelingHuman_[0-9]+_[A-Z]+)_(.*(?=_Session))')
                 pattern4 = re.compile('(TestQA_[A-Z]+)_(.*(?=_Session))')
+                pattern5 = re.compile('.*TEST.*')
                 fn, fext = os.path.splitext(os.path.basename(inputfile))
                 #print("test: %s" % fn)
                 gg = re.search(pattern, fn)
@@ -566,10 +752,18 @@ if __name__ == "__main__":
                     gg = re.search(pattern3, fn)
                 if gg == None:
                     gg = re.search(pattern4, fn)
+                # test for a TEST pGUID, has 'TEST' in the pGUID
+                gg2 = re.search(pattern5, fn)
+                if gg2 != None:
+                    # if we find a TEST, don't share
+                    print("Warning: appears to be a TEST pGUID, don't share")
+                    log.error("Warning: appears to be a TEST pGUID %s, don't share" % (fn))
+                    sys.exit(0)
+
                 if gg == None:
                     print("Could not match the participant and event name for %s" % (fn))
                     log.error("Could not match the participant and event name for %s" % (fn))
-                    sys.exit(-1)
+                    sys.exit(0)
                 matches = gg.groups()
                 #print("found this many entries: %d from %s %s" % (len(matches), fn, matches[0]))
                 if len(matches) == 2:
@@ -580,6 +774,14 @@ if __name__ == "__main__":
                 else:
                     print("Error: Could not match the pGUID and name of the session for %s" % (fn))
                     log.error("Error: Could not match the pGUID and name of the session for %s" %(fn))
+                    sys.exit(0)
+
+                # find out what the radiology review score is for this participant
+                score = getValueFromREDCap( anonInfo['pGUID'], anonInfo['event'], 'mrif_score' )
+                #print('score:', score) 
+                if not ((score == "1") or (score == "2")):
+                    print("Error: participant score %s for %s not in allowed range (1,2)" % (score, anonInfo['pGUID']))
+                    log.error("Error: participant %s score not in allowed range (%s)" %( anonInfo['pGUID'], score))
                     sys.exit(0)
 
                 # in order to find out what the type of scan is we need to look at the json file that comes with this tgz (should be inside)
@@ -650,10 +852,12 @@ if __name__ == "__main__":
                     jfile = [m for m in members if reT.search(m.name)]
                     if len(jfile) == 1:
                         fobj = tarin.extractfile(jfile[0])
-                        data = json.load(fobj)
+                        # read the json data and convert to string for json decode
+                        str_fobj = fobj.read().decode("utf-8")
+                        data = json.loads(str_fobj)
                         # we can check if this dataset has been anonymized before, should contain a Anonymized entry
                         if 'Anonymized' in data:
-                                print("Detected already anonymized dataset (Anonymized tag present in included json). Ignoring this tgz.")
+                                print("Detected already anonymized dataset (Anonymized tag present in included json). Ignoring teprime_flags = lookupEdat2(anonInfo['SeriesInstanceUID']) his tgz.")
                                 log.error("Detected already anonymized dataset (Anonymized tag present in included json). Ignoring this tgz.")
                                 os.sys.exit(-1)
 
@@ -664,8 +868,18 @@ if __name__ == "__main__":
                         anonInfo['Manufacturer'] = ""
                         anonInfo['ManufacturerModelName'] = ""
                         anonInfo['SeriesDescription'] = ""
+                        anonInfo['SeriesInstanceUID'] = ""
                         try:
-                            anonInfo['StudyDate'] = data['StudyDate']
+                                anonInfo['StudyDate'] = data['StudyDate']
+                        except KeyError:
+                                pass
+                        try:
+                                #eprime_flags = lookupEdat2(anonInfo['SeriesInstanceUID'], eprime)
+                                #if eprime_flags == -1:
+                                #        print("Error: Event e-prime file not found")
+                                #        log.error("Error: Event e-prime file not found for participant %s " %( anonInfo['pGUID'] ))
+                                #        sys.exit(0) 
+                                anonInfo['SeriesInstanceUID'] = data['SeriesInstanceUID']
                         except KeyError:
                                 pass
                         try:
@@ -687,7 +901,13 @@ if __name__ == "__main__":
                         except KeyError:
                                 pass
                         try:
-                            anonInfo['ManufacturerModelName'] = data['ManufacturerModelName']
+                                #eprime_flags = lookupEdat2(anonInfo['SeriesInstanceUID'], eprime)
+                                #if eprime_flags == -1:
+                                #        print("Error: Event e-prime file not found")
+                                #        log.error("Error: Event e-prime file not found for participant %s " %( anonInfo['pGUID'] ))
+                                #        sys.exit(0) 
+
+                                anonInfo['ManufacturerModelName'] = data['ManufacturerModelName']
                         except KeyError:
                                 pass
                         try:
@@ -701,6 +921,7 @@ if __name__ == "__main__":
                         if 'ClassifyType' in data:
                                 anonInfo["ClassifyType"] = data["ClassifyType"]
                                 anonInfo["ABCDType"] = "_".join(s for s in data["ClassifyType"] if "ABCD".lower() in s.lower())
+                                
                                 if anonInfo["ABCDType"] == "unknown":
                                         # could be QA?
                                         anonInfo["ABCDType"] = "_".join(s for s in data["ClassifyType"] if "QA".lower() in s.lower())
@@ -719,11 +940,75 @@ if __name__ == "__main__":
                             print("Error: could not find a single json file in the tgz, quit here (maybe we should keep going?)")
                             os.sys.exit(0)
 
+                    #print('ABCDType', anonInfo['ABCDType'])
+                    #print('other' , anonInfo['ManufacturerModelName'] ) 
+                    
+                    if (anonInfo['ABCDType'] == 'unknown') or (anonInfo['ABCDType'] == 'ABCD-Physio'):
+                        # bail out, don't share
+                        print("Error: ClassifyType not shared %s" % (" + ".join(anonInfo["ClassifyType"])))
+                        log.error("Error: ClassifyType not shared %s" % (" + ".join(anonInfo["ClassifyType"])))
+                        os.sys.exit(0)
+                    
+                    #calculate a series time without the fractional seconds
+                    seriestime = anonInfo['SeriesTime']
+                    if "." in seriestime:
+                            seriestime = seriestime.split(".")[0] 
+
+                    # find out if the eprime event file exist 
+                    # check this only for the task runs 
+                    eventEdatFileName_description = '' 
+                    if 'ABCD-SST-fMRI' in anonInfo['ClassifyType'] or 'ABCD-MID-fMRI' in anonInfo['ClassifyType'] or 'ABCD-nBack-fMRI' in anonInfo['ClassifyType']: 
+                        eprime_flags = lookupEdat2(anonInfo['SeriesInstanceUID'], eprime) 
+                        if eprime_flags == -1:
+                                print("Error: Event e-prime file not found")
+                                log.error("Error: Event e-prime file not found for participant %s " %( anonInfo['pGUID'] ))
+                                sys.exit(0)    
+                        else: 
+                                bidstype = bidsFolderByClassifyType( anonInfo['ClassifyType'] )
+                                eventEdatFileName = "sub-%s/ses-%s/%s/%s_run-%s%s-EventRelatedInformation.%s" % (anonInfo['pGUID_BIDS'],
+                                                                                                                 anonInfo['event_BIDS'],
+                                                                                                                 bidstype,
+                                                                                                                 anonInfo['ABCDType'],
+                                                                                                                 anonInfo['SeriesDate'],
+                                                                                                                 seriestime,
+                                                                                                                 eprime_flags[1])
+                                eventEdatFileName_description = 'subject-level task response'                                                      
+
+                    #study date NIH format              
+                    sday2 = datetime.datetime.strptime(anonInfo['StudyDate'],'%Y%m%d').strftime('%m/%d/%Y')
+
                     outtarname = ''.join([ os.path.abspath(outputdir), os.path.sep, anonInfo['pGUID_BIDS'], '_', 
                                            anonInfo['event_BIDS'], '_', anonInfo["ABCDType"], '_', anonInfo['SeriesDate'], 
-                                           anonInfo['SeriesTime'], '.tgz'])
+                                           seriestime, '.tgz'])
                     print("Write to %s ..." % outtarname)
                     log.info("Write to %s ..." % outtarname)
+
+
+                    dti_flag = ''
+                    scan_type = 'Field Map'
+                    if 'ABCD-DTI' in anonInfo['ClassifyType']:
+                        dti_flag = 'Yes'
+                        scan_type = 'multi-shell DTI'
+                    if ('ABCD-T1' in anonInfo['ClassifyType']) or ('ABCD-T1-NORM' in anonInfo['ClassifyType']):
+                        scan_type = 'MR structural (T1)'        
+                    if ('ABCD-T2' in anonInfo['ClassifyType']) or ('ABCD-T2-NORM' in anonInfo['ClassifyType']):
+                        scan_type = 'MR structural (T2)'        
+
+
+                    id_flag = ''
+                    if 'ABCD-SST-fMRI' in anonInfo['ClassifyType']: 
+                        id_flag = '650'
+                        scan_type = 'fMRI'
+                    if 'ABCD-MID-fMRI' in anonInfo['ClassifyType']:
+                        id_flag = '648'
+                        scan_type = 'fMRI'
+                    if 'ABCD-nBack-fMRI' in anonInfo['ClassifyType']: 
+                        id_flag = '651'
+                        scan_type = 'fMRI'
+                    if 'ABCD-rsfMRI' in anonInfo['ClassifyType']: 
+                        id_flag = '649'                 
+                        scan_type = 'fMRI'
+
                     if os.path.exists(outtarname):
                             print("Error: file already exists, please move away before re-compressing...")
                             log.error("output file already exists, stop processing.")
@@ -760,38 +1045,38 @@ if __name__ == "__main__":
                     # lets write an entry to our meta-data file
                     addMetaData( metadatadir, { 'subjectkey': anonInfo['pGUID'], # required
                                   'src_subject_id': anonInfo['pGUID'], # required
-                                  'interview_date': anonInfo['StudyDate'], # required
-                                  'interview_age': anonInfo['PatientsAge'], # required
+                                  'interview_date': sday2, # required
+                                  'interview_age': round(float(anonInfo['PatientsAge'])*12), # required
                                   'gender': anonInfo['gender'], # required
-                                  'comments_misc': '',
+                                  'comments_misc': anonInfo['SeriesDescription'],
                                   'image_file': outtarname, # required
                                   'image_thumbnail_file': '',
-                                  'image_description': anonInfo['SeriesDescription'], # required DTI, fMRI, Fast SPGR, phantom
-                                  'experiment_id': 0, # required if fMRI
-                                  'scan_type': anonInfo['ABCDType'],  # required: MR diffusion; fMRI; MR structural (MPRAGE); MR structural (T1); MR structural (PD); MR structural (FSPGR); MR structural (T2); PET; ASL; microscopy; MR structural (PD, T2); MR structural (B0 map); MR structural (B1 map); single-shell DTI; multi-shell DTI; Field Map; X-Ray
+                                  'image_description': anonInfo['ABCDType'], # required DTI, fMRI, Fast SPGR, phantom
+                                  'experiment_id': id_flag, # required if fMRI
+                                  'scan_type': scan_type,  # required: MR diffusion; fMRI; MR structural (MPRAGE); MR structural (T1); MR structural (PD); MR structural (FSPGR); MR structural (T2); PET; ASL; microscopy; MR structural (PD, T2); MR structural (B0 map); MR structural (B1 map); single-shell DTI; multi-shell DTI; Field Map; X-Ray
                                   'scan_object': "Live", # required "Live", "Phantom"
-                                  'image_file_format': "DICOM",
-                                  'data_file2': '',
-                                  'data_file2_type': '',
-                                  'image_modality': "MRI",
-                                  'scanner_manufacturer_pd': anonInfo['Manufacturer'], # required 
+                                  'image_file_format': "DICOM", # required
+                                  'data_file2': '', #eventEdatFileName,
+                                  'data_file2_type': '', #eventEdatFileName_description,
+                                  'image_modality': "MRI", #required
+                                  'scanner_manufacturer_pd': anonInfo['Manufacturer'], # required  
                                   'scanner_type_pd': anonInfo['ManufacturerModelName'], # required 
-                                  'scanner_software_versions_pd': anonInfo['SoftwareVersion'], # required 
-                                  'magnetic_field_strength': "3", # required 
-                                  'mri_repetition_time_pd': anonInfo['RepetitionTime'], # required 
-                                  'mri_echo_time_pd': anonInfo['EchoTime'], # required 
+                                  'scanner_software_versions_pd': anonInfo['SoftwareVersion'], # required  
+                                  'magnetic_field_strength': '3', 
+                                  'mri_repetition_time_pd': '%.3f' % (float(anonInfo['RepetitionTime'])/1000.0), # required
+                                  'mri_echo_time_pd': '%.3f' % (float(anonInfo['EchoTime'])/1000.0), # required 
                                   'flip_angle': anonInfo['FlipAngle'], # required 
-                                  'acquisition_matrix': anonInfo['AcquisitionMatrix'], # required 
+                                  'acquisition_matrix': anonInfo['AcquisitionMatrix'], # required  
                                   'mri_field_of_view_pd': anonInfo['FoV'], # required 
                                   'patient_position': anonInfo['PatientPosition'], # required 
-                                  'photomet_interpret': anonInfo['PhotometricInterpretation'], # required 
+                                  'photomet_interpret': anonInfo['PhotometricInterpretation'], # required
                                   'receive_coil': anonInfo['ReceiveCoilName'],
                                   'transmit_coil': anonInfo['TransmitCoilName'],  
-                                  'transformation_performed': "No",
+                                  'transformation_performed': "No", #required
                                   'transformation_type': '',
                                   'image_history': '',
-                                  'image_num_dimensions': 3, # required
-                                  'image_extent1': '', # required
+                                  'image_num_dimensions': '',
+                                  'image_extent1': '', 
                                   'image_extent2': '',
                                   'image_extent3': '',
                                   'image_extent4': '',
@@ -803,7 +1088,7 @@ if __name__ == "__main__":
                                   'image_unit3': '',
                                   'image_unit4': '',
                                   'image_unit5': '',
-                                  'image_resolution1': anonInfo['ImagePixelSpacing'], # required
+                                  'image_resolution1': '', 
                                   'image_resolution2': '',
                                   'image_resolution3': '',
                                   'image_resolution4': '',
@@ -830,9 +1115,11 @@ if __name__ == "__main__":
                                   'experiment_description': '',
                                   'visit': anonInfo['event'],
                                   'slice_timing': '',
-                                  'bvek_bval_files': '',
+                                  'bvek_bval_files': dti_flag,
                                   'bvecfile': '',
-                                  'bvalfile': '' })
+                                  'bvalfile': '',
+                                  'deviceserialnumber': '',
+                                  'procdate': ''})
 
                 pool.close()
                 sys.exit(0)
