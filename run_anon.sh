@@ -1,5 +1,16 @@
 #!/bin/bash
 
+#
+# Call the anonymizer.sh script for TGZ files containing DICOMs in a directory.
+#
+# This script will attempt to create a TGZ file from a directory location if
+# GE is indicated on the command line (offline multi-band reconstructions).
+#
+# This file will only work if its run inside the DAIC. Directory locations are
+# backed into this script. This script is provided for illustration purposes only.
+#
+
+
 # read in the list of participants from the fast track file
 if [ $# -le 2 ]; then
     echo "usage: run_anon.sh fasttrack.json site=(ucsd, chla, ...) scanner=(GE,SI,PH)"
@@ -17,21 +28,15 @@ fi
 echo "run anonymizer for site $site, using subjects in $fasttrack"
 
 #get list of participants
-
 participants=`jq -r ".[].pGUID" "$fasttrack" | sort | uniq`
-
-#participants="NDAR_INVZVD13ZMG"
-#participants="NDAR_INVDTHJM3Y9" 
-#participants="NDAR_INVG0PD8MBV"
 
 for part in $participants
 do
-
+   # tgz files can be in one of two locations
    fl=`ls /space/syn07/1/data/ABCD/incoming/$site/$part*.tgz 2> /dev/null`
    f2=`ls /space/syn08/1/data/ABCD/incoming/$site/$part*.tgz 2> /dev/null`
 
-
-   # check if we can merge the f1 and f2 arrays of file names, maybe we need only one of them?
+   # check if we can merge the fl and f2 arrays of file names, maybe we need only one of them?
    if [ ! -z "$fl" ] && [ ! -z "$f2" ]; then
       fl=`echo "$fl $f2"`
    fi

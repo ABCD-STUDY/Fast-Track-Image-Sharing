@@ -883,6 +883,10 @@ if __name__ == "__main__":
                         except KeyError:
                                 pass
                         try:
+                            anonInfo['SeriesInstanceUID'] = data['SeriesInstanceUID']
+                        except KeyError:
+                                pass
+                        try:
                             anonInfo['StudyTime'] = data['StudyTime']
                         except KeyError:
                                 pass
