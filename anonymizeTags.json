@@ -38,7 +38,6 @@
   { "group": "0x10", "element": "0x1040", "hr": "PatientAddress" },
   { "group": "0x10", "element": "0x40", "hr": "PatientsSex" },
   { "group": "0x10", "element": "0x4000", "hr": "PatientComments" },
-  { "group": "0x18", "element": "0x1000", "hr": "DeviceSerialNumber" },
   { "group": "0x20", "element": "0x4000", "hr": "ImageComments" },
   { "group": "0x20", "element": "0x10", "hr": "StudyID" },
   { "group": "0x25", "element": "0x101a", "hr": "PrimaryReceiverSuiteAndHost" },
