@@ -398,7 +398,6 @@ def uploadToNDA( metadatadir, metadata ):
 
     # --------------------------------------------------------
     #               Upload metadata to miNDAR
-
     try:
         with open('login_credentials.json','r') as f:
             try:
@@ -433,8 +432,8 @@ def uploadToNDA( metadatadir, metadata ):
         package['dataStructureRows'][0]['dataElement'].append( { "name": i, "value": t } )
 
 
-    print( json.dumps(package, indent=2) )
-    input('ENTER to continue')
+    # print( json.dumps(package, indent=2) )
+    # input('ENTER to continue')
 
     # Upload metadata package
     res = requests.post( "https://ndar.nih.gov/api/mindar/import",
@@ -451,6 +450,7 @@ def uploadToNDA( metadatadir, metadata ):
     rs  =  subprocess.run( ['/home/oruiz/.local/bin/aws', 's3', 'cp', imagefilename, 's3://nda-abcd/'], stderr=subprocess.PIPE )
     S3_ok  =  (rs.returncode == 0)
     S3_msg =  rs.stderr
+    s3_msg = s3_msg.decode("utf-8")   # beause subprocess returns a b'' object
     # --------------------------------------------------------
     
     return [miNDA_ok, miNDA_msg, S3_ok, S3_msg]
@@ -1214,9 +1214,6 @@ if __name__ == "__main__":
                 print('\n[miNDA_ok =', miNDA_ok)
                 print('miNDA_msg: ', miNDA_msg, '\n')
                 print('S3_ok =', S3_ok)
-                print('S3_msg: ', S3_msg)
-                if len(S3_msg) == 0:
-                    S3_msg = ''
                 print('S3_msg: ', S3_msg)
                 print('\n' )
 
