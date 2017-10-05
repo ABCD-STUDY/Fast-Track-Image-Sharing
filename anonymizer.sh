@@ -448,9 +448,9 @@ def uploadToNDA( metadatadir, metadata ):
     #                  Upload file to aws
 
     rs  =  subprocess.run( ['/home/oruiz/.local/bin/aws', 's3', 'cp', imagefilename, 's3://nda-abcd/'], stderr=subprocess.PIPE )
-    S3_ok  =  (rs.returncode == 0)
-    S3_msg =  rs.stderr
-    s3_msg = s3_msg.decode("utf-8")   # beause subprocess returns a b'' object
+    S3_ok  = (rs.returncode == 0)
+    S3_msg = rs.stderr
+    S3_msg = S3_msg.decode("utf-8")   # because subprocess returns a b'' object
     # --------------------------------------------------------
     
     return [miNDA_ok, miNDA_msg, S3_ok, S3_msg]
@@ -1211,8 +1211,8 @@ if __name__ == "__main__":
                 # Write an entry to our meta-data file
                 [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record )
                 
-                print('\n[miNDA_ok =', miNDA_ok)
-                print('miNDA_msg: ', miNDA_msg, '\n')
+                print('\nmiNDA_ok =', miNDA_ok)
+                print(  'miNDA_msg: ', miNDA_msg, '\n')
                 print('S3_ok =', S3_ok)
                 print('S3_msg: ', S3_msg)
                 print('\n' )
