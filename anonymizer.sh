@@ -7,6 +7,10 @@ List of tags for example from: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3229
 (This script runs on tgz files to produce a new tgz file with values)
 
 If a *.hdr file is detected inside the input tgz no output is generated.
+
+This script and associated resources are in: https://github.com/ABCD-STUDY/Fast-Track-Image-Sharing
+
+Written by Hauke, Daniela.  Modified by Octavio Ruiz, 2017oct04
 """
 
 import sys, os, time, atexit, stat, tempfile, copy, tarfile, datetime, io, getopt
@@ -383,6 +387,77 @@ def createMetaDataDB( metadatadir, metadata ):
     conn.commit()
     conn.close()
 
+
+# ---------------------------------------------------------------------------------------------------------
+def uploadToNDA( metadatadir, metadata ):
+
+    import requests
+    import subprocess
+
+    imagefilename = metadata['image_file']
+
+    # --------------------------------------------------------
+    #               Upload metadata to miNDAR
+
+    try:
+        with open('login_credentials.json','r') as f:
+            try:
+                login_credentials = json.load(f)
+            except ValueError:
+                print("Error: could not read login_credentials.json in the current directory or syntax error")
+                log.error("Error: could not read login_credentials.json in the current directory or syntax error")
+                sys.exit(0)
+    except IOError:
+        print("Error: unable to read login_credentials.json file in the current directory")
+        log.error("Error: could not read login_credentials.json in the current directory")
+        sys.exit(0)
+        
+    username = login_credentials['miNDAR']['username']
+    password = login_credentials['miNDAR']['password']
+
+    # NDA requires a number in the first image_resolution field
+    metadata['image_resolution1'] = '0'
+
+    # Assembly package from metadata
+    package = {
+        "schemaName": "abcd_upload_107927",
+        "dataStructureRows": [ {
+                "shortName":  "image03",
+                "dataElement": []
+        } ]
+    }
+    for i,v in metadata.items():
+        t = v
+        if isinstance(t, list):
+            t = json.dumps(t)
+        package['dataStructureRows'][0]['dataElement'].append( { "name": i, "value": t } )
+
+
+    print( json.dumps(package, indent=2) )
+    input('ENTER to continue')
+
+    # Upload metadata package
+    res = requests.post( "https://ndar.nih.gov/api/mindar/import",
+                        auth=requests.auth.HTTPBasicAuth(username, password),
+                        headers={'content-type':'application/json'},
+                        data = json.dumps(package) )
+    miNDA_ok  = res.ok
+    miNDA_msg = res.text
+    # --------------------------------------------------------
+
+    # --------------------------------------------------------
+    #                  Upload file to aws
+
+    rs  =  subprocess.run( ['/home/oruiz/.local/bin/aws', 's3', 'cp', imagefilename, 's3://nda-abcd/'], stderr=subprocess.PIPE )
+    S3_ok  =  (rs.returncode == 0)
+    S3_msg =  rs.stderr
+    # --------------------------------------------------------
+    
+    return [miNDA_ok, miNDA_msg, S3_ok, S3_msg]
+# ---------------------------------------------------------------------------------------------------------
+
+
+
 def addMetaData( metadatadir, metadata ):
     """       
       Store image03 type information into a sqlite3 database
@@ -411,7 +486,7 @@ def addMetaData( metadatadir, metadata ):
                 print("Error: Could not connect to database file %s" % sqlite_file)
                 return
         pass
-                
+
     c = conn.cursor()
 
     # A) Inserts an ID with a specific value in a second column
@@ -423,6 +498,8 @@ def addMetaData( metadatadir, metadata ):
             values.append(''.join(['"', str(metadata[key]), '"']))
         else:
             values.append(''.join(['"', metadata[key], '"']))
+
+
     c.execute("INSERT INTO {tn} ({cn}) VALUES ({val})".format(tn=table_name, cn=(','.join(keys)), val=(','.join(values))))
 
     conn.commit()
@@ -981,12 +1058,18 @@ if __name__ == "__main__":
                     #study date NIH format              
                     sday2 = datetime.datetime.strptime(anonInfo['StudyDate'],'%Y%m%d').strftime('%m/%d/%Y')
 
+                    # our record to update contains {"name": "interview_date", "value": "04/06/2017"}
+                    # but NDA requires {"name": "interview_date", "value": "04/06/2017 00:00:00"}, so:
+                    if len(anonInfo['StudyTime']) >= 6:
+                        sday2 = sday2 + ' ' + anonInfo['StudyTime'][0:2] + ':' + anonInfo['StudyTime'][2:4] + ':' + anonInfo['StudyTime'][4:6]
+                    else:
+                        sday2 = sday2 + " 00:00:00"
+
                     outtarname = ''.join([ os.path.abspath(outputdir), os.path.sep, anonInfo['pGUID_BIDS'], '_', 
                                            anonInfo['event_BIDS'], '_', anonInfo["ABCDType"], '_', anonInfo['SeriesDate'], 
                                            seriestime, '.tgz'])
                     print("Write to %s ..." % outtarname)
                     log.info("Write to %s ..." % outtarname)
-
 
                     dti_flag = ''
                     scan_type = 'Field Map'
@@ -1046,8 +1129,8 @@ if __name__ == "__main__":
                     tarin.close()
                     tarout.close()
 
-                    # lets write an entry to our meta-data file
-                    addMetaData( metadatadir, { 'subjectkey': anonInfo['pGUID'], # required
+                    # Assembly meta-data record to be savev to NDA and our local database
+                    new_record = {'subjectkey': anonInfo['pGUID'], # required
                                   'src_subject_id': anonInfo['pGUID'], # required
                                   'interview_date': sday2, # required
                                   'interview_age': round(float(anonInfo['PatientsAge'])*12), # required
@@ -1123,7 +1206,31 @@ if __name__ == "__main__":
                                   'bvecfile': '',
                                   'bvalfile': '',
                                   'deviceserialnumber': '',
-                                  'procdate': ''})
+                                  'procdate': ''}
+
+                # Write an entry to our meta-data file
+                [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record )
+                
+                print('\n[miNDA_ok =', miNDA_ok)
+                print('miNDA_msg: ', miNDA_msg, '\n')
+                print('S3_ok =', S3_ok)
+                print('S3_msg: ', S3_msg)
+                if len(S3_msg) == 0:
+                    S3_msg = ''
+                print('S3_msg: ', S3_msg)
+                print('\n' )
+
+                new_record['miNDA_ok']  = miNDA_ok
+                new_record['miNDA_msg'] = miNDA_msg
+                new_record['miNDA_msg'] = new_record['miNDA_msg'].replace('\"','')
+                new_record['miNDA_msg'] = new_record['miNDA_msg'].replace('\'','')
+
+                new_record['S3_ok']  = S3_ok
+                new_record['S3_msg'] = S3_msg
+                new_record['S3_msg'] = new_record['S3_msg'].replace('\"','')
+                new_record['S3_msg'] = new_record['S3_msg'].replace('\'','')
+
+                addMetaData( metadatadir, new_record )
 
                 pool.close()
                 sys.exit(0)
