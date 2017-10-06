@@ -431,7 +431,6 @@ def uploadToNDA( metadatadir, metadata ):
             t = json.dumps(t)
         package['dataStructureRows'][0]['dataElement'].append( { "name": i, "value": t } )
 
-
     # print( json.dumps(package, indent=2) )
     # input('ENTER to continue')
 
@@ -445,17 +444,19 @@ def uploadToNDA( metadatadir, metadata ):
     # --------------------------------------------------------
 
     # --------------------------------------------------------
-    #                  Upload file to aws
-
-    rs  =  subprocess.run( ['/home/oruiz/.local/bin/aws', 's3', 'cp', imagefilename, 's3://nda-abcd/'], stderr=subprocess.PIPE )
-    S3_ok  = (rs.returncode == 0)
-    S3_msg = rs.stderr
-    S3_msg = S3_msg.decode("utf-8")   # because subprocess returns a b'' object
+    #       If metadata recorded to miNDA succesfully, upload file to aws
+    if miNDA_ok:
+        rs  =  subprocess.run( ['/home/oruiz/.local/bin/aws', 's3', 'cp', imagefilename, 's3://nda-abcd/'], stderr=subprocess.PIPE )
+        S3_ok  = (rs.returncode == 0)
+        S3_msg = rs.stderr
+        S3_msg = S3_msg.decode("utf-8")   # because subprocess returns a b'' object
+    else:
+        S3_ok  = ''
+        S3_msg = ''
     # --------------------------------------------------------
     
     return [miNDA_ok, miNDA_msg, S3_ok, S3_msg]
 # ---------------------------------------------------------------------------------------------------------
-
 
 
 def addMetaData( metadatadir, metadata ):
@@ -1208,11 +1209,18 @@ if __name__ == "__main__":
                                   'deviceserialnumber': '',
                                   'procdate': ''}
 
-                # Write an entry to our meta-data file
-                [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record )
-                
-                print('\nmiNDA_ok =', miNDA_ok)
-                print(  'miNDA_msg: ', miNDA_msg, '\n')
+                # Write a metadata entry to miNDA, and image files to S3
+
+                # attempt first miNDA upload; if it doesn't work, do not upload images
+                for i in range(2):
+                    [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record )
+                    print('\nmiNDA_ok =', miNDA_ok)
+                    print(  'miNDA_msg: ', miNDA_msg, '\n')
+                    if miNDA_ok:
+                        break
+                    else:
+                        time.sleep(15)
+
                 print('S3_ok =', S3_ok)
                 print('S3_msg: ', S3_msg)
                 print('\n' )
