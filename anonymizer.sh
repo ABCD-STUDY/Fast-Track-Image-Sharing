@@ -10,7 +10,7 @@ If a *.hdr file is detected inside the input tgz no output is generated.
 
 This script and associated resources are in: https://github.com/ABCD-STUDY/Fast-Track-Image-Sharing
 
-Written by Hauke, Daniela.  Modified by Octavio Ruiz, 2017oct04
+Written by Hauke, Daniela.  Modified by Hauke Bartsch & Octavio Ruiz, 2017oct04-28
 """
 
 import sys, os, time, atexit, stat, tempfile, copy, tarfile, datetime, io, getopt
@@ -389,12 +389,13 @@ def createMetaDataDB( metadatadir, metadata ):
 
 
 # ---------------------------------------------------------------------------------------------------------
-def uploadToNDA( metadatadir, metadata ):
+# def uploadToNDA( metadatadir, metadata ):
+def uploadToNDA( metadatadir, metadata, imagefilename ):
 
     import requests
     import subprocess
 
-    imagefilename = metadata['image_file']
+    # imagefilename = metadata['image_file']   # Removed and passed now as an argument, because name to miNDA is different than name in our file system (Octavio, 2017oct18)
 
     # --------------------------------------------------------
     #               Upload metadata to miNDAR
@@ -858,7 +859,7 @@ if __name__ == "__main__":
                 score = getValueFromREDCap( anonInfo['pGUID'], anonInfo['event'], 'mrif_score' )
                 #print('score:', score) 
                 if not ((score == "1") or (score == "2")):
-                    print("Error: participant score %s for %s not in allowed range (1,2)" % (score, anonInfo['pGUID']))
+                    print("Error: participant score \"%s\" for %s not in allowed range (1,2)" % (score, anonInfo['pGUID']))
                     log.error("Error: participant %s score not in allowed range (%s)" %( anonInfo['pGUID'], score))
                     sys.exit(0)
 
@@ -1072,6 +1073,14 @@ if __name__ == "__main__":
                     print("Write to %s ..." % outtarname)
                     log.info("Write to %s ..." % outtarname)
 
+
+# Octavio (2017oct13): -------------------------------------------------------------------------------------
+                    outtarname_for_miNDA = ''.join([ 's3://nda-abcd', os.path.sep, anonInfo['pGUID_BIDS'], '_', 
+                                           anonInfo['event_BIDS'], '_', anonInfo["ABCDType"], '_', anonInfo['SeriesDate'], 
+                                           seriestime, '.tgz'])
+                    print("filename to be stored in miNDA: %s ..." % outtarname_for_miNDA)
+# ------------------------------------------------------------------------------------- :Octavio (2017oct13)
+
                     dti_flag = ''
                     scan_type = 'Field Map'
                     if 'ABCD-DTI' in anonInfo['ClassifyType']:
@@ -1137,7 +1146,12 @@ if __name__ == "__main__":
                                   'interview_age': round(float(anonInfo['PatientsAge'])*12), # required
                                   'gender': anonInfo['gender'], # required
                                   'comments_misc': anonInfo['SeriesDescription'],
-                                  'image_file': outtarname, # required
+
+# Octavio (2017oct13): -------------------------------------------------------------------------------------
+                                #   'image_file': outtarname, # required
+                                  'image_file': outtarname_for_miNDA, # required
+# ------------------------------------------------------------------------------------- :Octavio (2017oct13)
+
                                   'image_thumbnail_file': '',
                                   'image_description': anonInfo['ABCDType'], # required DTI, fMRI, Fast SPGR, phantom
                                   'experiment_id': id_flag, # required if fMRI
@@ -1213,7 +1227,10 @@ if __name__ == "__main__":
 
                 # attempt first miNDA upload; if it doesn't work, do not upload images
                 for i in range(2):
-                    [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record )
+
+                    # [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record )
+                    [miNDA_ok, miNDA_msg, S3_ok, S3_msg] = uploadToNDA( metadatadir, new_record, outtarname )   # Octavio (2017oct18)
+
                     print('\nmiNDA_ok =', miNDA_ok)
                     print(  'miNDA_msg: ', miNDA_msg, '\n')
                     if miNDA_ok:
