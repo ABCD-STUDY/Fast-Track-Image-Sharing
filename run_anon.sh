@@ -9,6 +9,9 @@
 # This file will only work if its run inside the DAIC. Directory locations are
 # backed into this script. This script is provided for illustration purposes only.
 #
+# This script looks up and access the files through links in subdirs 'data/incoming' and 'data/unpack', in the current directory.
+# New links must be added to these subdirs when a new file system is set up to receive more data.
+# Written by Hauke Bartsch ...          Modified by Hauke Bartsch and Octavio Ruiz, 2017oct18-28
 
 
 # read in the list of participants from the fast track file
@@ -30,19 +33,14 @@ echo "run anonymizer for site $site, using subjects in $fasttrack"
 #get list of participants
 participants=`jq -r ".[].pGUID" "$fasttrack" | sort | uniq`
 
+
 for part in $participants
 do
-   # tgz files can be in one of two locations
-   fl=`ls /space/syn07/1/data/ABCD/incoming/$site/$part*.tgz 2> /dev/null`
-   f2=`ls /space/syn08/1/data/ABCD/incoming/$site/$part*.tgz 2> /dev/null`
-
-   # check if we can merge the fl and f2 arrays of file names, maybe we need only one of them?
-   if [ ! -z "$fl" ] && [ ! -z "$f2" ]; then
-      fl=`echo "$fl $f2"`
-   fi
-   if [ ! -z "$f2" ] && [ -z "$fl" ]; then
-      fl=$f2
-   fi
+   # Octavio (2017oct18): ------------------------------------------------------------------------
+   # tgz files are in several locations, with more locations added as the project continues.
+   # These locations are pointed to by links in one directory:
+   fl=`ls data/incoming/*/$site/$part*.tgz 2> /dev/null`
+   # ------------------------------------------------------------------------ :Octavio (2017oct18)
 
    # now check if the merge array is empty (does the newline in between f1 and f2 work?)
    if [ -z "$fl" ]; then
@@ -57,30 +55,18 @@ do
           echo "Lookup the unpack data and create a local temporary TGZ for the anonymizer"
           bname=`basename ${file}`
 
-          # we need the study instance UID from this series to get the folder right for input
-          echo "TRYING syn05"
-          studyinstanceuid=`jq -r ".StudyInstanceUID" /space/syn05/1/data/MMILDB/DAL_ABCD_QC/unpack/${site}/${bname%.*}/*/*.json`
-          if [ $? != "0" ]; then
-              studyinstanceuid="THISISNOTASTUDYINSTANCEUID"
-          fi
-          seriesinstanceuid=`jq -r ".SeriesInstanceUID" /space/syn05/1/data/MMILDB/DAL_ABCD_QC/unpack/${site}/${bname%.*}/*/*.json`
-          input="/space/syn05/1/data/MMILDB/DAL_ABCD_QC/unpack/${site}/${bname%.*}/${studyinstanceuid}"
-
+          # Octavio (2017oct28): ------------------------------------------------------------------------
+          #
+          # Removed a previous explicit two-directory search for unpack files. Now:
+          #
+          studyinstanceuid=`jq -r ".StudyInstanceUID"  data/unpack/*/${site}/${bname%.*}/*/*.json`
+          seriesinstanceuid=`jq -r ".SeriesInstanceUID" data/unpack/*/${site}/${bname%.*}/*/*.json`
+          input=`ls -d data/unpack/*/${site}/${bname%.*}/${studyinstanceuid}`
           if [ ! -d "${input}" ]; then
-             echo "DIRECTORY DOES NOT EXIST ON syn05 "
-             echo "$input" 
-             echo "TRYING syn06"
-             studyinstanceuid=`jq -r ".StudyInstanceUID" /space/syn06/1/data/MMILDB/DAL_ABCD_QC/unpack/${site}/${bname%.*}/*/*.json`
-             if [ $? != "0" ]; then
-                 studyinstanceuid="THISISNOTASTUDYINSTANCEUID"
-             fi
-             seriesinstanceuid=`jq -r ".SeriesInstanceUID" /space/syn06/1/data/MMILDB/DAL_ABCD_QC/unpack/${site}/${bname%.*}/*/*.json`
-             input="/space/syn06/1/data/MMILDB/DAL_ABCD_QC/unpack/${site}/${bname%.*}/${studyinstanceuid}"
-             if [ ! -d "${input}" ]; then
-                echo "DIRECTORY DOES NOT EXIST ON syn06 either"
-                continue
-             fi
+             echo "UNABLE TO FIND files in UNPACK DIRECTORIES, got \"${input}\""
+             continue
           fi
+          # ------------------------------------------------------------------------ :Octavio (2017oct28)
 
           inputJSON=""
           # we have to fix the directory to package, we have to remove the json file inside and we have to put back a better json file (with ClassifyType)

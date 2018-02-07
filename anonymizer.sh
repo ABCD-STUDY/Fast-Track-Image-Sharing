@@ -57,7 +57,7 @@ def anonymize(df, anonInfo, mode="dir", tarout=None):
 
                     try:
                         # replace information from the json file
-                        info['PatientName'] =  ['pGUID']
+                        info['PatientName'] =  ['pGUID']          # ToDo: Change this line to  info['PatientName'] = anonInfo['pGUID']  for uploads after NDA-17
                         info['PatientID'] = anonInfo['pGUID']
                         info['StudyDescription'] = "Adolescent Brain Cognitive Development Study"
                         info['SeriesDescription'] = ', '.join(anonInfo['ClassifyType'])
@@ -898,7 +898,7 @@ if __name__ == "__main__":
                 # create a pool of worker to speed things up
                 # (tests show that with 6 CPU's we will still need about 2min to anonymize 14,000 files of a study,
                 #  with 2 CPUs we need 4min)
-                pool = Pool(processes=1)
+                pool = Pool(processes=1)   # Return:   bvals.txt  bvecs.txt	data.nii.gz
                 res  = []
                 if mode == "dir":
                     for r,d,f in os.walk(inputfile):
@@ -1107,7 +1107,8 @@ if __name__ == "__main__":
                         scan_type = 'fMRI'
 
                     if os.path.exists(outtarname):
-                            print("Error: file already exists, please move away before re-compressing...")
+                            # print("Error: file already exists, please move away before re-compressing...")
+                            print("Error: file already exists, please move away before re-compressing", outtarname)
                             log.error("output file already exists, stop processing.")
                             os.sys.exit(0)
                     tarout = tarfile.open(outtarname, 'w:gz')
